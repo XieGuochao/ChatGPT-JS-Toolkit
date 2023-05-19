@@ -8,12 +8,13 @@ The usage is extremely simple: Just download the file `chatgpt.js` or `chatgpt.m
 
 ## Related Projects
 
-- [ChatGPT Chrome Extension Template]()
+- [ChatGPT Chrome Extension Template](https://github.com/XieGuochao/ChatGPT-Chrome-Template)
 - [ChatGPT Chrome Extension Demo]()
 
 ## TODO
 
-- [ ] Support a minimal set of functionalities to create a Chat.
+- [x] Support a minimal set of functionalities to create a Chat.
+- [ ] Error handling and robustness.
 - [ ] Extend and support more functionalities.
 
 ## Contact
