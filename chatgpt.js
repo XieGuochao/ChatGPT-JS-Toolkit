@@ -5,143 +5,199 @@
  * License: MIT
  */
 
-const GPT_BASE_URL = "https://api.openai.com";
-
-async function get_request(url, account) {
-    const response = await fetch(`${GPT_BASE_URL}${url}`, { 
-        headers: {
-            "Authorization": `Bearer ${account.getToken()}`,
-            "Content-Type": "application/json",
-            "OpenAI-Organization": account.getOrg()
-        }
-    });
-    const json = await response.json();
-    return json;
-}
-
-async function post_request(url, account, data) {
-    const response = await fetch(`${GPT_BASE_URL}${url}`, {
-        method: "POST",
-        headers: {
-            "Authorization": `Bearer ${account.getToken()}`,
-            "Content-Type": "application/json",
-        },
-        body: JSON.stringify(data)
-    });
-    const json = await response.json();
-    return json;
+let OPENAI_CONFIGURATION = {
+    "base_url": "https://api.openai.com",
 }
 
 /**
- * GPTAccount:
- * Stores the organization and token.
+ * Fetch wrapper: fetchGET and fetchPOST
+ * Return:
+ * [result, errorcode, message]
  */
-function GPTAccount(org, token, default_model) {
-    this.org = org;
-    this.token = token;
-    this.default_model = default_model;
-}
-
-GPTAccount.prototype.getOrg = function() {
-    return this.org;
-}
-
-GPTAccount.prototype.getToken = function() {
-    return this.token;
-}
-
-GPTAccount.prototype.getDefaultModel = function() {
-    return this.default_model;
-}
-
-GPTAccount.prototype.getModels = async function() {
-    const models = await get_request("/v1/models", this);
-    if (!models["data"]) {
-        return [];
+async function fetchGET(path, headers, errorHandler) {
+    const response = await fetch(`${OPENAI_CONFIGURATION.base_url}${path}`, {
+        method: "GET",
+        headers: headers,
+    });
+    if (response.ok) {
+        const json = await response.json();
+        return [json, 0, ""];
+    } else {
+        if (errorHandler)
+            errorHandler(response);
+        else
+            console.log(response);
+        return [null, response.status, response.statusText];
     }
-    // Sort models by id (string)
-    models["data"].sort((a, b) => { return a["id"].localeCompare(b["id"]); });
-    return models["data"];
 }
 
-async function loadGPTAccountFromStorage() {
-    const data = await chrome.storage.sync.get(["org", "token", "default_model"]);
-    return new GPTAccount(data["org"] || "", data["token"] || "", data["default_model"] || "");
+async function fetchPOST(path, headers, data, errorHandler) {
+    const response = await fetch(`${OPENAI_CONFIGURATION.base_url}${path}`, {
+        method: "POST",
+        headers: headers,
+        body: JSON.stringify(data),
+    });
+    if (response.ok) {
+        const json = await response.json();
+        return [json, 0, ""];
+    } else {
+        if (errorHandler)
+            errorHandler(response);
+        else
+            console.log(response);
+        return [null, response.status, response.statusText];
+    }
 }
 
-GPTAccount.prototype.saveToStorage = async function() {
+/**
+ * OAccount:
+ * Stores the organization and api_key.
+ */
+function OAccount(org, api_key, default_model) {
+    this.org = org || "";
+    this.api_key = api_key || "";
+    this.default_model = default_model || "";
+}
+
+OAccount.prototype.headers = function () {
+    return {
+        "Authorization": `Bearer ${this.api_key}`,
+        "Content-Type": "application/json",
+        "OpenAI-Organization": this.org,
+    };
+}
+
+OAccount.prototype.save = async function () {
     await chrome.storage.sync.set({
-        "org": this.org,
-        "token": this.token,
+        "org": this.org || "",
+        "api_key": this.api_key || "",
         "default_model": this.default_model || "",
     });
 }
 
+OAccount.prototype.load = async function () {
+    const data = await chrome.storage.sync.get(["org", "api_key", "default_model"]);
+    this.org = data["org"] || "";
+    this.api_key = data["api_key"] || "";
+    this.default_model = data["default_model"] || "";
+}
+
 /**
- * GPTChat:
- * A chat with history and token usage.
- * history: Should be [] for a new history.
- * tokenUsages: Should be [] for a new token usage.
+ * Models:
+ * List and retrieve models.
+ * This class is supposed to be called by OAccount.models().
  */
-function GPTChat(account, model, history, tokenUsages) {
+function Models(account) {
     this.account = account;
-    this.model = model || account.getDefaultModel() || "gpt-3.5-turbo";
-    this.history = history || [];
-    this.tokenUsages = tokenUsages || [];
 }
 
-GPTChat.prototype.getHistory = function() {
-    return this.history;
+Models.prototype.list = async function (errorHandler) {
+    const [json, errorcode, message] = await fetchGET("/v1/models", this.account.headers(), errorHandler);
+    if (errorcode == 0) {
+        const models = json["data"] || [];
+        models.sort((a, b) => { return a["id"].localeCompare(b["id"]); });
+        return [models, errorcode, message];
+    }
+    return [null, errorcode, message];
 }
 
-GPTChat.prototype.getTokenUsages = function() {
-    return this.tokenUsages;
+Models.prototype.retrieve = async function (model, errorHandler) {
+    const [json, errorcode, message] = await fetchGET(`/v1/models/${model}`, this.account.headers(), errorHandler);
+    return [json, errorcode, message];
 }
 
-GPTChat.prototype.getModel = function() {
-    return this.model;
+OAccount.prototype.models = function () {
+    return new Models(this);
 }
 
-GPTChat.prototype.getTokenSummary = function() {
-    return this.tokenUsages.reduce((a, b) => {
-        return {
-            "total_tokens": a["total_tokens"] + b["total_tokens"],
-            "prompt_tokens": a["prompt_tokens"] + b["prompt_tokens"],
-            "completion_tokens": a["completion_tokens"] + b["completion_tokens"],
-        }
-    }, {
-        "total_tokens": 0,
-        "prompt_tokens": 0,
-        "completion_tokens": 0,
+
+/**
+ * OHistory:
+ * A generic history class.
+ */
+function OHistory() {
+    this.history = [];
+    this.token_usages = [];
+    this.finish_reasons = [];
+}
+
+OHistory.prototype.append = function (history, token_usage, finish_reason) {
+    this.history.push(history);
+    token_usage = token_usage || null;
+    finish_reason = finish_reason || null;
+    this.token_usages.push(token_usage);
+    this.finish_reasons.push(finish_reason);
+}
+
+OAccount.prototype.saveToStorage = async function () {
+    await chrome.storage.sync.set({
+        "org": this.org,
+        "api_key": this.api_key,
+        "default_model": this.default_model || "",
     });
 }
 
-GPTChat.prototype.ask = async function(prompt, options, promptCallback) {
-    this.history.push({
-        "role": (options && (options.user)) || "user", 
-        "content": prompt,
-    });
-
-    if (promptCallback)
-        promptCallback(this);
-
-    const response = await post_request("/v1/chat/completions", this.account, {
-        ...options,
-        "model": this.model,
-        "messages": this.history,
-    });
-
-    const answer = response["choices"][0]["message"]["content"];
-    const role = response["choices"][0]["message"]["role"];
-    this.history.push({
+function historyElement(role, content) {
+    return {
         "role": role,
-        "content": answer,
-    });
-    this.tokenUsages.push({
-        "total_tokens": response["choices"][0]["tokens"],
-        "prompt_tokens": response["choices"][0]["prompt_tokens"],
-        "completion_tokens": response["choices"][0]["completion_tokens"],
-    });
+        "content": content,
+    }
+}
+
+
+/**
+ * OChat:
+ * A chat with history and api_key usage.
+ */
+function OChat(account, model) {
+    this.account = account || new OAccount();
+    this.history = new OHistory();
+    this.model = model || account.default_model;
+}
+
+/**
+ * create: ask a new messgage.
+ */
+OChat.prototype.create = async function (prompt, role, options, promptCallback, errorHandler) {
+    role = role || "user";
+    options = options || {};
+    options.model = this.model;
+    options.messages = this.history.history;
+    this.history.append(historyElement(
+        role,
+        prompt,
+    ));
+
+    if (promptCallback) {
+        promptCallback(this);
+    }
+
+    const [json, errorcode, error_message] = await fetchPOST(
+        "/v1/chat/completions",
+        this.account.headers(),
+        options,
+        errorHandler,
+    );
+
+    if (errorcode == 0) {
+        const message = json["choices"][0]["message"];
+        const token_usage = json["usage"];
+        const finish_reason = json["choices"][0]["finish_reason"];
+        this.history.append(historyElement(
+            message.role,
+            message.content,
+        ), token_usage, finish_reason);
+        return [message, errorcode, error_message];
+    }
+    return [null, errorcode, error_message];
+}
+
+/**
+ * ask: alias of create.
+ */
+OChat.prototype.ask = async function (prompt, role, options, promptCallback, errorHandler) {
+    const [message, errorcode, error_message] = await this.create(prompt, role, options, promptCallback, errorHandler);
+    return [message, errorcode, error_message];
 }
 
 console.log("ChatGPT.js loaded.");
