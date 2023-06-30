@@ -1,0 +1,12 @@
+{
+    "manifest_version": 3,
+    "name": "Tests for ChatGPT JS Toolkit",
+    "description": "Tests for ChatGPT JS Toolkit.",
+    "version": "1.0",
+    "action": {
+      "default_popup": "./tests/tests.html"
+    },
+    "permissions": [
+      "storage"
+    ]
+}

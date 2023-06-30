@@ -68,6 +68,26 @@ const [message, errorcode, error_message] = await chat.create("ChatGPT is "); //
 const history = chat.history; // Get the OHistory object.
 ```
 
+## Tests
+
+We provide a unit-test extension in `/tests`. We use [`Qunit.js`](https://qunitjs.com/) as our testing framework for its simplicity.
+
+### Prepare Tests
+
+```
+cp credentials-template.js credentials.js
+```
+
+And customize the `credentials.js`. A **valid** OpenAI account is required for testing.
+
+### Load the Unit Test Extension to Chrome
+
+Load the root directory of this project to the Chrome extensions.
+
+### Run Tests
+
+The pop-up of this testing extension will directly run the tests and show all results.
+
 ## Related Projects
 
 - [ChatGPT Chrome Extension Template](https://github.com/XieGuochao/ChatGPT-Chrome-Template)
