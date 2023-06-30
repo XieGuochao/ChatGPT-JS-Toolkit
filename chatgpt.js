@@ -91,6 +91,38 @@ function Models(account) {
     this.account = account;
 }
 
+/**
+ * getType:
+ * This function is supposed to get the type from an API but OpenAI does not provide it. 
+ * */
+Models.prototype.getType = async function (model) {
+    const prefixMap = {
+        "gpt": "CHAT",
+        "ada": "TEXT",
+        "babbage": "TEXT",
+        "code": "TEXT",
+        "curie": "TEXT",
+        "davinci": "TEXT",
+        "text-ada": "TEXT",
+        "text-babbage": "TEXT",
+        "text-curie": "TEXT",
+        "text-davinci": "TEXT",
+        "text-embedding": "TEXT",
+        "text-search": "TEXT",
+        "text-similarity"   : "TEXT",
+        "text-moderation": "MODERATION",
+        "DALL": "IMAGE",
+        "whisper": "AUDIO",
+    };
+
+    for (const prefix in prefixMap) {
+        if (model.startsWith(prefix)) {
+            return prefixMap[prefix];
+        }
+    }
+    return "UNKNOWN";
+}
+
 Models.prototype.list = async function (errorHandler) {
     const [json, errorcode, message] = await fetchGET("/v1/models", this.account.headers(), errorHandler);
     if (errorcode == 0) {
