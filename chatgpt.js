@@ -128,6 +128,9 @@ Models.prototype.list = async function (errorHandler) {
     if (errorcode == 0) {
         const models = json["data"] || [];
         models.sort((a, b) => { return a["id"].localeCompare(b["id"]); });
+        for (const model of models) {
+            model["type"] = await this.getType(model["id"]);
+        }
         return [models, errorcode, message];
     }
     return [null, errorcode, message];
